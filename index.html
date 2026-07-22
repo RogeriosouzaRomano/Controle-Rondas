@@ -1,11 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Controle de Rondas</title>
-    <!-- Biblioteca para gerar PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         * { box-sizing: border-box; font-family: Arial, sans-serif; margin: 0; padding: 0; }
@@ -50,7 +48,6 @@
         }
         .btn { background: #2980b9; color: white; border: none; cursor: pointer; }
         .btn:hover { background: #1a5276; }
-        .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
         .btn-verde { background: #27ae60; }
         .btn-vermelho { background: #e74c3c; }
         .btn-sair { background: #7f8c8d; padding: 8px; font-size: 14px; width: auto; float: right; }
@@ -61,15 +58,16 @@
         .local { font-weight: bold; color: #2980b9; }
         .data { color: #666; font-size: 12px; }
         .usuario { color: #27ae60; font-size: 12px; }
+        .mapa-mini { width: 100%; height: 120px; border-radius: 6px; margin-top: 8px; border: 1px solid #ddd; }
+        .link-mapa { font-size: 13px; color: #2980b9; text-decoration: none; display: inline-block; margin-top: 5px; }
         .oculto { display: none; }
     </style>
 </head>
 <body>
 
-<!-- TELA DE LOGIN -->
 <div id="telaLogin">
     <div class="logo-container">
-        <img src="logo.png" alt="Logo Empresa">
+        <img src="logo.png" alt="Logo LondonGreen">
     </div>
     <div class="card">
         <h1>🔐 Acesso ao Sistema</h1>
@@ -78,13 +76,10 @@
     </div>
 </div>
 
-<!-- TELA PRINCIPAL -->
 <div id="telaPrincipal" class="oculto">
-    <!-- LOGOTIPO TAMBÉM AQUI DEPOIS DO LOGIN -->
     <div class="logo-container">
         <img src="logo.png" alt="Logo Empresa">
     </div>
-
     <div class="card">
         <span class="usuario">Logado: <strong id="nomeUsuario"></strong></span>
         <button class="btn btn-sair" onclick="sair()">Sair</button>
@@ -158,8 +153,8 @@ document.getElementById('btnLerQR').addEventListener('click', async () => {
                     const registro = {
                         local: dado.text || dado,
                         dataHora: new Date().toLocaleString('pt-BR'),
-                        latitude: 'Buscando...',
-                        longitude: 'Buscando...',
+                        latitude: null,
+                        longitude: null,
                         usuario: usuarioLogado
                     };
 
@@ -171,8 +166,6 @@ document.getElementById('btnLerQR').addEventListener('click', async () => {
                                 finalizarRegistro(registro);
                             },
                             erro => {
-                                registro.latitude = 'Não autorizado';
-                                registro.longitude = 'Não autorizado';
                                 finalizarRegistro(registro);
                             },
                             { timeout: 8000 }
@@ -196,12 +189,19 @@ function finalizarRegistro(reg) {
     localStorage.setItem('rondas', JSON.stringify(registros));
     atualizarLista();
     
+    const temCoord = reg.latitude && reg.longitude;
+    const mapaLink = temCoord ? `https://www.google.com/maps?q=${reg.latitude},${reg.longitude}` : null;
+    const mapaImg = temCoord ? `https://www.google.com/maps/api/staticmap?center=${reg.latitude},${reg.longitude}&zoom=16&size=400x120&markers=color:red|${reg.latitude},${reg.longitude}&key=AIzaSyC9kDlY5XQaP0GQZbX7y7w9r8t7u6s5a4d3` : null;
+
     document.getElementById('resultado').innerHTML = `
         ✅ <strong>REGISTRADO COM SUCESSO!</strong><br>
         👤 Responsável: ${reg.usuario}<br>
         📍 Local: ${reg.local}<br>
         🕒 Data/Hora: ${reg.dataHora}<br>
-        🛰️ GPS: ${reg.latitude}, ${reg.longitude}
+        ${temCoord ? `
+        <img src="${mapaImg}" class="mapa-mini" alt="Mapa do local" onerror="this.style.display='none'">
+        <a href="${mapaLink}" target="_blank" class="link-mapa">🔗 Abrir no Google Maps</a>
+        ` : `<span style="color:#888">📍 Localização não disponível</span>`}
     `;
 }
 
@@ -209,24 +209,25 @@ function atualizarLista() {
     const lista = document.getElementById('lista');
     lista.innerHTML = '';
     registros.forEach(r => {
+        const temCoord = r.latitude && r.longitude;
+        const mapaLink = temCoord ? `https://www.google.com/maps?q=${r.latitude},${r.longitude}` : null;
         lista.innerHTML += `
             <div class="item">
                 <div class="local">${r.local}</div>
                 <div class="usuario">Responsável: ${r.usuario}</div>
-                <div class="data">${r.dataHora} | ${r.latitude}, ${r.longitude}</div>
+                <div class="data">${r.dataHora} ${temCoord ? `| <a href="${mapaLink}" target="_blank" class="link-mapa">Ver mapa</a>` : ''}</div>
             </div>
         `;
     });
 }
 
-// NOVA FUNÇÃO: GERAR E BAIXAR PDF FORMATADO
 function exportarPDF() {
     const doc = new jsPDF();
-    doc.setFontSize(10);
+    doc.setFontSize(18);
     doc.setTextColor(44, 62, 80);
     doc.text('RELATÓRIO DE RONDAS', 105, 20, { align: 'center' });
     
-    doc.setFontSize(8);
+    doc.setFontSize(12);
     doc.setTextColor(0,0,0);
     let posicaoY = 35;
 
@@ -235,7 +236,7 @@ function exportarPDF() {
             doc.addPage();
             posicaoY = 20;
         }
-        doc.setFontSize(8);
+        doc.setFontSize(14);
         doc.setTextColor(41, 128, 185);
         doc.text(`Registro ${indice+1}`, 20, posicaoY);
         posicaoY += 8;
@@ -247,7 +248,11 @@ function exportarPDF() {
         posicaoY += 6;
         doc.text(`Data/Hora: ${r.dataHora}`, 20, posicaoY);
         posicaoY += 6;
-        doc.text(`Coordenadas: ${r.latitude}, ${r.longitude}`, 20, posicaoY);
+        if(r.latitude && r.longitude) {
+            doc.text(`Localização: https://www.google.com/maps?q=${r.latitude},${r.longitude}`, 20, posicaoY);
+        } else {
+            doc.text(`Localização: Não disponível`, 20, posicaoY);
+        }
         posicaoY += 10;
     });
 
