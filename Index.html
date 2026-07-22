@@ -1,1 +1,267 @@
 
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Rondas</title>
+    <!-- Biblioteca para gerar PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: Arial, sans-serif; margin: 0; padding: 0; }
+        body { 
+            max-width: 500px; 
+            margin: 0 auto; 
+            padding: 20px 15px; 
+            background: #f5f5f5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .logo-container {
+            text-align: center;
+            margin-bottom: 25px;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .logo-container img {
+            max-height: 80px;
+            max-width: 90%;
+        }
+        .card { 
+            background: white; 
+            padding: 25px 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15); 
+            margin-bottom: 15px;
+            width: 100%;
+        }
+        h1 { color: #2c3e50; text-align: center; margin-bottom: 20px; font-size: 22px; }
+        input, button { 
+            width: 100%; 
+            padding: 12px; 
+            margin: 8px 0; 
+            border: 1px solid #ddd; 
+            border-radius: 6px; 
+            font-size: 16px; 
+        }
+        .btn { background: #2980b9; color: white; border: none; cursor: pointer; }
+        .btn:hover { background: #1a5276; }
+        .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+        .btn-verde { background: #27ae60; }
+        .btn-vermelho { background: #e74c3c; }
+        .btn-sair { background: #7f8c8d; padding: 8px; font-size: 14px; width: auto; float: right; }
+        #leitor { width: 100%; border-radius: 8px; overflow: hidden; background: #000; margin-bottom: 15px; display: none; }
+        video { width: 100%; }
+        .item { padding: 10px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+        .item:last-child { border-bottom: none; }
+        .local { font-weight: bold; color: #2980b9; }
+        .data { color: #666; font-size: 12px; }
+        .usuario { color: #27ae60; font-size: 12px; }
+        .oculto { display: none; }
+    </style>
+</head>
+<body>
+
+<!-- TELA DE LOGIN -->
+<div id="telaLogin">
+    <div class="logo-container">
+        <img src="logo.png" alt="Logo Empresa">
+    </div>
+    <div class="card">
+        <h1>🔐 Acesso ao Sistema</h1>
+        <input type="email" id="emailUsuario" placeholder="Digite seu e‑mail" required>
+        <button class="btn" onclick="logar()">Entrar</button>
+    </div>
+</div>
+
+<!-- TELA PRINCIPAL -->
+<div id="telaPrincipal" class="oculto">
+    <!-- LOGOTIPO TAMBÉM AQUI DEPOIS DO LOGIN -->
+    <div class="logo-container">
+        <img src="logo.png" alt="Logo Empresa">
+    </div>
+
+    <div class="card">
+        <span class="usuario">Logado: <strong id="nomeUsuario"></strong></span>
+        <button class="btn btn-sair" onclick="sair()">Sair</button>
+        <div style="clear: both;"></div>
+    </div>
+
+    <button class="btn" id="btnLerQR">🔍 LER QR CODE DO LOCAL</button>
+    <div id="leitor"><video id="video"></video></div>
+
+    <div class="card" id="resultado"></div>
+
+    <button class="btn btn-verde" onclick="exportarPDF()">📥 Exportar em PDF</button>
+    <button class="btn btn-vermelho" onclick="limpar()">🗑️ Limpar Histórico</button>
+
+    <div class="card">
+        <h3>📊 Últimas Passagens</h3>
+        <div id="lista"></div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+const { jsPDF } = window.jspdf;
+let leitor = null;
+let usuarioLogado = localStorage.getItem('usuarioRonda') || null;
+let registros = JSON.parse(localStorage.getItem('rondas')) || [];
+
+if (usuarioLogado) mostrarSistema();
+
+function logar() {
+    const email = document.getElementById('emailUsuario').value.trim();
+    if (!email || !email.includes('@')) {
+        alert('Digite um e‑mail válido!');
+        return;
+    }
+    usuarioLogado = email;
+    localStorage.setItem('usuarioRonda', email);
+    mostrarSistema();
+}
+
+function mostrarSistema() {
+    document.getElementById('telaLogin').classList.add('oculto');
+    document.getElementById('telaPrincipal').classList.remove('oculto');
+    document.getElementById('nomeUsuario').textContent = usuarioLogado;
+    atualizarLista();
+}
+
+function sair() {
+    if (confirm('Deseja sair?')) {
+        localStorage.removeItem('usuarioRonda');
+        usuarioLogado = null;
+        location.reload();
+    }
+}
+
+document.getElementById('btnLerQR').addEventListener('click', async () => {
+    document.getElementById('leitor').style.display = 'block';
+    document.getElementById('btnLerQR').disabled = true;
+    document.getElementById('resultado').innerHTML = '';
+
+    leitor = new Html5Qrcode("leitor");
+    try {
+        await leitor.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: {width: 220, height: 220} },
+            (dado) => {
+                leitor.stop().then(() => {
+                    document.getElementById('leitor').style.display = 'none';
+                    document.getElementById('btnLerQR').disabled = false;
+
+                    const registro = {
+                        local: dado.text || dado,
+                        dataHora: new Date().toLocaleString('pt-BR'),
+                        latitude: 'Buscando...',
+                        longitude: 'Buscando...',
+                        usuario: usuarioLogado
+                    };
+
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                            pos => {
+                                registro.latitude = pos.coords.latitude.toFixed(6);
+                                registro.longitude = pos.coords.longitude.toFixed(6);
+                                finalizarRegistro(registro);
+                            },
+                            erro => {
+                                registro.latitude = 'Não autorizado';
+                                registro.longitude = 'Não autorizado';
+                                finalizarRegistro(registro);
+                            },
+                            { timeout: 8000 }
+                        );
+                    } else {
+                        finalizarRegistro(registro);
+                    }
+                });
+            },
+            () => {}
+        );
+    } catch (erro) {
+        alert('Não foi possível acessar a câmera: verifique permissões!');
+        document.getElementById('leitor').style.display = 'none';
+        document.getElementById('btnLerQR').disabled = false;
+    }
+});
+
+function finalizarRegistro(reg) {
+    registros.unshift(reg);
+    localStorage.setItem('rondas', JSON.stringify(registros));
+    atualizarLista();
+    
+    document.getElementById('resultado').innerHTML = `
+        ✅ <strong>REGISTRADO COM SUCESSO!</strong><br>
+        👤 Responsável: ${reg.usuario}<br>
+        📍 Local: ${reg.local}<br>
+        🕒 Data/Hora: ${reg.dataHora}<br>
+        🛰️ GPS: ${reg.latitude}, ${reg.longitude}
+    `;
+}
+
+function atualizarLista() {
+    const lista = document.getElementById('lista');
+    lista.innerHTML = '';
+    registros.forEach(r => {
+        lista.innerHTML += `
+            <div class="item">
+                <div class="local">${r.local}</div>
+                <div class="usuario">Responsável: ${r.usuario}</div>
+                <div class="data">${r.dataHora} | ${r.latitude}, ${r.longitude}</div>
+            </div>
+        `;
+    });
+}
+
+// NOVA FUNÇÃO: GERAR E BAIXAR PDF FORMATADO
+function exportarPDF() {
+    const doc = new jsPDF();
+    doc.setFontSize(10);
+    doc.setTextColor(44, 62, 80);
+    doc.text('RELATÓRIO DE RONDAS', 105, 20, { align: 'center' });
+    
+    doc.setFontSize(8);
+    doc.setTextColor(0,0,0);
+    let posicaoY = 35;
+
+    registros.forEach((r, indice) => {
+        if(posicaoY > 270) {
+            doc.addPage();
+            posicaoY = 20;
+        }
+        doc.setFontSize(8);
+        doc.setTextColor(41, 128, 185);
+        doc.text(`Registro ${indice+1}`, 20, posicaoY);
+        posicaoY += 8;
+        doc.setFontSize(11);
+        doc.setTextColor(0,0,0);
+        doc.text(`Responsável: ${r.usuario}`, 20, posicaoY);
+        posicaoY += 6;
+        doc.text(`Local: ${r.local}`, 20, posicaoY);
+        posicaoY += 6;
+        doc.text(`Data/Hora: ${r.dataHora}`, 20, posicaoY);
+        posicaoY += 6;
+        doc.text(`Coordenadas: ${r.latitude}, ${r.longitude}`, 20, posicaoY);
+        posicaoY += 10;
+    });
+
+    doc.save(`relatorio_rondas_${new Date().toLocaleDateString('pt-BR').replaceAll('/','-')}.pdf`);
+}
+
+function limpar() {
+    if(confirm('Apagar todo o histórico?')) {
+        registros = [];
+        localStorage.removeItem('rondas');
+        atualizarLista();
+        document.getElementById('resultado').innerHTML = '';
+    }
+}
+</script>
+</body>
+</html>
